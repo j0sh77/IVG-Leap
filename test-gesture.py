@@ -60,9 +60,9 @@ class SampleListener(Leap.Listener):
             x = hand.palm_position[0]
             y = hand.palm_position[1]
             z = hand.palm_position[2]
-            #print "y : %s" % ( y )
-            #print "x : %s" % ( x )
-            #print "z : %s" % ( z )
+            print "y : %s" % ( y )
+            print "x : %s" % ( x )
+            print "z : %s" % ( z )
 
             if z < -60:
                 print "FORWARD"

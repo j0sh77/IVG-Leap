@@ -20,6 +20,8 @@ mixer = alsaaudio.Mixer()
 volume = int(mixer.getvolume()[0])
 lastSeen = 0
 threshold = 22
+limits = {"x": 100, "y": 250, "z": 100}
+
 def main():
     print "\n\n\n\n\n\n"
     # Create a sample listener and controller
@@ -69,52 +71,58 @@ class SampleListener(Leap.Listener):
         global mixer, volume, lastSeen
         frame = controller.frame()
 
+        if len(frame.hands) is 0:
+            return
 
-        for hand in frame.hands:
-            #check if hands haven't been seen in .5 seconds. if so, wait a bit
-            m = int(round(time.time() * 1000))
-            if m - lastSeen > 3000:
-                sleep(.5)
-                lastSeen = m
-                break
+        hand = frame.hands[0]
 
+        #check if hands haven't been seen in .5 seconds. if so, wait a bit
+        m = int(round(time.time() * 1000))
+        if m - lastSeen > 3000:
+            sleep(.5)
             lastSeen = m
-            normal = hand.palm_normal
-            direction = hand.direction
-            pitch = direction.pitch * Leap.RAD_TO_DEG
-            roll = normal.roll * Leap.RAD_TO_DEG
-            handType = "\033[31mLeft\033[0m " if hand.is_left else "\033[32mRight\033[0m"
+            return
 
-            x = hand.palm_position[0]
-            y = hand.palm_position[1]
-            z = hand.palm_position[2]
+        lastSeen = m
+        normal = hand.palm_normal
+        direction = hand.direction
+        pitch = direction.pitch * Leap.RAD_TO_DEG
+        roll = normal.roll * Leap.RAD_TO_DEG
+        handType = "\033[31mLeft\033[0m " if hand.is_left else "\033[32mRight\033[0m"
 
-            if hand.grab_strength > .9:
-                media("pause")
-                sleep(.5)
+        x = hand.palm_position[0]
+        y = hand.palm_position[1]
+        z = hand.palm_position[2]
 
-            if hand.palm_velocity.x > 500:
-                media("next")
-                sleep(1)
+        if abs(x) > limits["x"] or y > limits["y"] or abs(z) > limits["z"]:
+            return
 
-            if hand.palm_velocity.x < -500:
-                media("prev")
-                sleep(1)
+        if hand.grab_strength > .9:
+            media("pause")
+            sleep(.5)
 
-            if abs(roll) > threshold:
-                if self.volumeController == limiter:
-                    delta = (1 if roll > threshold else -1) * (abs(int(roll)) - threshold) / 3.0
-                    delta = math.ceil(delta) if roll > 0 else math.floor(delta)
-                    delta = int(delta)
-                    #print "%f" % delta
-                    volume -= delta
-                    volume = 0 if volume < 0 else volume
-                    volume = 100 if volume > 100 else volume
-                    mixer.setvolume(volume)
-                    #print "Setting volume to %d (%d)" % (volume, -1 * delta)
-                    self.volumeController = 0
-                else:
-                    self.volumeController += 1
+        if hand.palm_velocity.x > 500:
+            media("next")
+            sleep(1)
+
+        if hand.palm_velocity.x < -500:
+            media("prev")
+            sleep(1)
+
+        if abs(roll) > threshold:
+            if self.volumeController == limiter:
+                delta = (1 if roll > threshold else -1) * (abs(int(roll)) - threshold) / 3.0
+                delta = math.ceil(delta) if roll > 0 else math.floor(delta)
+                delta = int(delta)
+                #print "%f" % delta
+                volume -= delta
+                volume = 0 if volume < 0 else volume
+                volume = 100 if volume > 100 else volume
+                mixer.setvolume(volume)
+                #print "Setting volume to %d (%d)" % (volume, -1 * delta)
+                self.volumeController = 0
+            else:
+                self.volumeController += 1
 
 
         def state_string(self, state):
@@ -132,20 +140,16 @@ class SampleListener(Leap.Listener):
 
 def media(cmd):
     if cmd is "pause":
-        keyDown("Control_L")
-        keyDown("Insert")
-        keyUp("Insert")
-        keyUp("Control_L")
+        key = "Insert"
     elif cmd is "next":
-        keyDown("Control_L")
-        keyDown("Prior")
-        keyUp("Prior")
-        keyUp("Control_L")
+        key = "Prior"
     elif cmd is "prev":
-        keyDown("Control_L")
-        keyDown("Home")
-        keyUp("Home")
-        keyUp("Control_L")
+        key = "Home"
+
+    keyDown("Control_L")
+    keyDown(key)
+    keyUp(key)
+    keyUp("Control_L")
 
 def keyDown(key):
     sequence = "keydown %s\n" % (key)
