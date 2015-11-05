@@ -10,20 +10,46 @@ import struct, fcntl, termios, readline, time
 
 sys.path.insert(0, "lib/")
 
-import Leap, alsaaudio, math
+import Leap, math
+import Menu
+from Menu import MenuItem
 from time import sleep
 from subprocess import Popen, PIPE
 from Leap import CircleGesture, KeyTapGesture, ScreenTapGesture, SwipeGesture
 
-limiter = 15
-mixer = alsaaudio.Mixer()
-volume = int(mixer.getvolume()[0])
 lastSeen = 0
-threshold = 22
 limits = {"x": 100, "y": 300, "z": 100}
 
+menu =  MenuItem("Main Menu",
+            MenuItem("Environment",
+                MenuItem("Temperature",
+                    65, 66, 67, 68, 69, 70
+                ),
+                MenuItem("Fan Speed",
+                    1, 2, 3, 4, 5
+                )
+            ),
+            MenuItem("Music",
+                MenuItem("Radio",
+                    "AM",
+                    "FM"
+                ),
+                MenuItem("Volume",
+                    1, 2, 3, 4, 5
+                )
+            ),
+            MenuItem("Other Settings",
+                MenuItem("Test One",
+                    1, 2, 3, 4, 5, 6, 7, 8, 9
+                )
+            )
+        )
+currentMenu = menu
+#print currentMenu.getCursor().data.getNodeNames()
+#print menu.show()
+
 def main():
-    print "\n\n\n\n\n\n"
+    print "\n\n"
     # Create a sample listener and controller
     listener = SampleListener()
     controller = Leap.Controller()
@@ -52,6 +78,7 @@ class SampleListener(Leap.Listener):
 
     def on_connect(self, controller):
         print "Connected"
+        os.system('clear')
 
         # Enable gestures
         controller.enable_gesture(Leap.Gesture.TYPE_CIRCLE);
@@ -68,7 +95,7 @@ class SampleListener(Leap.Listener):
 
     def on_frame(self, controller):
         # Get the most recent frame and report some basic information
-        global mixer, volume, lastSeen
+        global menu, currentMenu, lastSeen
         frame = controller.frame()
 
         if len(frame.hands) is 0:
@@ -78,7 +105,11 @@ class SampleListener(Leap.Listener):
 
         #check if hands haven't been seen in .5 seconds. if so, wait a bit
         m = int(round(time.time() * 1000))
-        if m - lastSeen > 3000:
+        if m - lastSeen > 5000:
+            currentMenu = menu
+            os.system('clear')
+            print currentMenu.getNodeNames()
+            os.system('play --no-show-progress --null --channels 1 synth %s sine %f' % (.5, 300))
             sleep(.5)
             lastSeen = m
             return
@@ -97,33 +128,44 @@ class SampleListener(Leap.Listener):
         if abs(x) > limits["x"] or y > limits["y"] or abs(z) > limits["z"]:
             return
 
-        if hand.grab_strength > .90:
-            media("pause")
-            sleep(1)
-
-        if hand.palm_velocity.x > 400:
-            media("next")
-            sleep(1)
-
-        if hand.palm_velocity.x < -400:
-            media("prev")
-            sleep(1)
-
-        if abs(roll) > threshold:
-            if self.volumeController == limiter:
-                delta = (1 if roll > threshold else -1) * (abs(int(roll)) - threshold) / 3.0
-                delta = math.ceil(delta) if roll > 0 else math.floor(delta)
-                delta = int(delta)
-                #print "%f" % delta
-                volume -= delta
-                volume = 0 if volume < 0 else volume
-                volume = 100 if volume > 100 else volume
-                mixer.setvolume(volume)
-                #print "Setting volume to %d (%d)" % (volume, -1 * delta)
-                self.volumeController = 0
+        if hand.grab_strength > .9:
+            if type(currentMenu.getCursor().data) == MenuItem:
+                currentMenu = currentMenu.getCursor().data
+                print currentMenu.getNodeNames()
+                speak = currentMenu.getCursor().data if not (type(currentMenu.getCursor().data) == MenuItem) else currentMenu.getCursor().data.getName()
+                say(speak)
             else:
-                self.volumeController += 1
+                deleteLine()
+                say("Selected %s" % (currentMenu.getCursor().data))
+                currentMenu = currentMenu.getParent()
 
+            sleep(1)
+
+        if hand.palm_velocity.x > 300:
+            currentMenu.next()
+            deleteLine()
+            print currentMenu.getNodeNames()
+            speak = currentMenu.getCursor().data if not (type(currentMenu.getCursor().data) == MenuItem) else currentMenu.getCursor().data.getName()
+            say(speak)
+            sleep(.5)
+
+        if hand.palm_velocity.x < -300:
+            currentMenu.prev()
+            deleteLine()
+            print currentMenu.getNodeNames()
+            speak = currentMenu.getCursor().data if not (type(currentMenu.getCursor().data) == MenuItem) else currentMenu.getCursor().data.getName()
+            say(speak)
+            sleep(.5)
+
+        if hand.palm_velocity.y > 300:
+            if currentMenu.getParent() is None:
+                return
+            currentMenu = currentMenu.getParent()
+            deleteLine()
+            deleteLine()
+            print currentMenu.getNodeNames()
+            say(currentMenu.getCursor().data.getName())
+            sleep(.5)
 
         def state_string(self, state):
             if state == Leap.Gesture.STATE_START:
@@ -138,28 +180,10 @@ class SampleListener(Leap.Listener):
             if state == Leap.Gesture.STATE_INVALID:
                 return "STATE_INVALID"
 
-def media(cmd):
-    if cmd is "pause":
-        key = "Insert"
-    elif cmd is "next":
-        key = "Prior"
-    elif cmd is "prev":
-        key = "Home"
-
-    keyDown("Control_L")
-    keyDown(key)
-    keyUp(key)
-    keyUp("Control_L")
-
-def keyDown(key):
-    sequence = "keydown %s\n" % (key)
-    p = Popen(['xte'], stdin = PIPE)
-    p.communicate(input = sequence)
-
-def keyUp(key):
-    sequence = "keyup %s\n" % (key)
-    p = Popen(['xte'], stdin = PIPE)
-    p.communicate(input = sequence)
+def say(str):
+    speed = 150
+    pitch = 50
+    os.system("echo \"%s\" | espeak -s %d -p %d" % (str, speed, pitch))
 
 def deleteLine():
 	# Next line said to be reasonably portable for various Unixes
